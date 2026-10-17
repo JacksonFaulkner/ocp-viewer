@@ -1,0 +1,16 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# local backups and downloads
+*.tgz
+videos/
+
+# OS
+.DS_Store

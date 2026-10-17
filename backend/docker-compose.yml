@@ -1,0 +1,19 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ocp
+      POSTGRES_USER: ocp
+      POSTGRES_PASSWORD: ocp
+    ports:
+      - "5433:5432"   # 5433 so it doesn't collide with another local postgres
+    volumes:
+      - ocp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ocp -d ocp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ocp_pgdata:

@@ -1,0 +1,17 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+
+# local data: videos, captions, analysis outputs, sqlite status db
+data/
+
+# OS
+.DS_Store

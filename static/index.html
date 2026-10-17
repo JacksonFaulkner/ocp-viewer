@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OCP Talk Finder</title>
+<style>
+  :root {
+    --bg: #f6f6f3; --panel: #ffffff; --text: #1c1c1a; --muted: #6b6b66; --line: #e3e2dc;
+    --accent: #0b6b4f; --accent-fg: #ffffff; --user: #e8efe9; --chip: #efeee8; --warn: #9a5b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151614; --panel: #1e201d; --text: #ecebe6; --muted: #9a9a92; --line: #2f322d;
+            --accent: #4cc38f; --accent-fg: #0d1f17; --user: #23342b; --chip: #272a25; --warn: #e0a64a; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); display: flex; flex-direction: column;
+         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel); display: flex; align-items: baseline; gap: 12px; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 650; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  header button { margin-left: auto; }
+  #log { flex: 1; overflow-y: auto; padding: 16px; }
+  .wrap { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  .msg.user { align-self: flex-end; background: var(--user); padding: 9px 13px; border-radius: 14px 14px 4px 14px; max-width: 85%; }
+  .msg.bot { background: var(--panel); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 14px 16px; }
+  .msg.bot.err { border-color: var(--warn); color: var(--warn); }
+  .answer h3, .answer h4 { margin: 14px 0 4px; font-size: 15px; }
+  .answer p { margin: 8px 0; }
+  .answer ul, .answer ol { margin: 6px 0 6px 20px; padding: 0; }
+  .answer code { background: var(--chip); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .cite { border: 0; background: var(--chip); color: var(--accent); font: inherit; font-size: 12px; font-weight: 650; padding: 0 5px; border-radius: 5px; cursor: pointer; vertical-align: baseline; }
+  .cite:hover { background: var(--accent); color: var(--accent-fg); }
+  .clips { display: grid; gap: 12px; margin-top: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .clip { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
+  .clip.flash { outline: 2px solid var(--accent); }
+  .clip video { width: 100%; display: block; background: #000; aspect-ratio: 16 / 9; }
+  .clip .body { padding: 10px 12px 12px; }
+  .clip .num { color: var(--accent); font-weight: 700; }
+  .clip .title { font-weight: 600; font-size: 14px; }
+  .clip .range { color: var(--muted); font-size: 12.5px; margin: 1px 0 6px; }
+  .clip .why { font-size: 14px; margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+  a { color: var(--accent); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details p { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+  button { font: inherit; font-size: 13px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 5px 10px; border-radius: 8px; }
+  button:hover { border-color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips button { background: var(--chip); border-radius: 999px; padding: 6px 12px; }
+  .empty { color: var(--muted); }
+  .empty h2 { color: var(--text); font-size: 20px; margin: 30px 0 6px; }
+  .dots::after { content: ""; animation: d 1.2s steps(4) infinite; }
+  @keyframes d { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+  .status { color: var(--muted); font-size: 13px; }
+  form { padding: 12px 16px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+  form .wrap { flex-direction: row; gap: 8px; }
+  textarea { flex: 1; resize: none; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; max-height: 140px; }
+  textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  form button { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; padding: 0 18px; }
+  form button:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OCP Talk Finder</h1>
+  <span class="meta" id="meta"></span>
+  <button id="reset" type="button" title="Clear the conversation">New chat</button>
+</header>
+<div id="log"><div class="wrap" id="thread"></div></div>
+<form id="form">
+  <div class="wrap">
+    <textarea id="input" rows="1" placeholder="Ask about the talks, e.g. what are the safety risks of 800 VDC?" autofocus></textarea>
+    <button id="send" type="submit">Ask</button>
+  </div>
+</form>
+
+<script>
+"use strict";
+const SUGGESTIONS = [
+  "How do 800 VDC systems ride through faults?",
+  "What are the safety risks of 800 VDC?",
+  "Which connectors are used at 800 VDC?",
+  "How does the power shelf change in 800V designs?",
+];
+const $ = (s) => document.querySelector(s);
+const thread = $("#thread"), log = $("#log"), input = $("#input"), sendBtn = $("#send");
+let history = [];   // [{role, content}] sent with each request
+let busy = false;
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const mmss = (t) => { t = Math.round(t); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0"); };
+
+// Minimal markdown: escape first, then headings, bold, code, lists, paragraphs, [n] citations.
+function md(src, msgId) {
+  const lines = esc(src).split("\n"); const out = []; let list = null;
+  const inline = (t) => t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[(\d+)\]/g, (_, n) => `<button type="button" class="cite" data-msg="${msgId}" data-clip="${n}">${n}</button>`);
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const raw of lines) {
+    const line = raw.trimEnd(); let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)/))) { close(); out.push(`<h4>${inline(m[2])}</h4>`); }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if (!line.trim()) continue;   // blank lines inside a list must not restart its numbering
+    else { close(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  close(); return out.join("");
+}
+
+function scrollDown() { log.scrollTop = log.scrollHeight; }
+function add(html, cls) { const d = document.createElement("div"); d.className = "msg " + cls; d.innerHTML = html; thread.appendChild(d); scrollDown(); return d; }
+
+function showEmpty() {
+  thread.innerHTML = `<div class="empty"><h2>Ask a question, get the moments worth watching.</h2>
+    <p>Answers cite short clips from the indexed Open Compute Project talks. Click a clip to play just that part.</p>
+    <div class="chips">${SUGGESTIONS.map((s) => `<button type="button">${esc(s)}</button>`).join("")}</div></div>`;
+  thread.querySelectorAll(".chips button").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
+}
+
+// Play only [start, end]; reload the signed URL once if it has expired.
+function wireVideo(v, clip) {
+  let retried = false;
+  const seek = () => { if (v.currentTime < clip.start_sec - 0.5 || v.currentTime > clip.end_sec) v.currentTime = clip.start_sec; };
+  v.addEventListener("loadedmetadata", seek);
+  v.addEventListener("play", seek);
+  v.addEventListener("timeupdate", () => { if (v.currentTime >= clip.end_sec) { v.pause(); v.currentTime = clip.start_sec; } });
+  v.addEventListener("error", async () => {
+    if (retried) return; retried = true;
+    try {
+      const r = await fetch(`/videos/${clip.video_id}/media?start=${clip.start_sec}&end=${clip.end_sec}`);
+      if (r.ok) { v.src = (await r.json()).play_url; v.load(); }
+    } catch (_) {}
+  });
+}
+
+function clipCard(c, msgId) {
+  const el = document.createElement("div"); el.className = "clip"; el.id = `clip-${msgId}-${c.id}`;
+  el.innerHTML = `<video controls preload="metadata" playsinline></video>
+    <div class="body">
+      <div class="title"><span class="num">[${c.id}]</span> ${esc(c.title)}</div>
+      <div class="range">${mmss(c.start_sec)} – ${mmss(c.end_sec)} · ${Math.round(c.end_sec - c.start_sec)}s</div>
+      <p class="why">${esc(c.why_watch)}</p>
+      <div class="row"><a href="${esc(c.youtube_url)}" target="_blank" rel="noopener">Open on YouTube</a></div>
+      ${c.transcript ? `<details><summary>Transcript</summary><p>${esc(c.transcript)}</p></details>` : ""}
+    </div>`;
+  const v = el.querySelector("video"); v.src = c.play_url; wireVideo(v, c);
+  return el;
+}
+
+function render(data) {
+  const id = "m" + Date.now();
+  const d = add(`<div class="answer">${md(data.answer, id)}</div>`, "bot");
+  if (data.clips && data.clips.length) {
+    const grid = document.createElement("div"); grid.className = "clips";
+    data.clips.forEach((c) => grid.appendChild(clipCard(c, id)));
+    d.appendChild(grid);
+  } else if (!data.found) {
+    d.insertAdjacentHTML("beforeend", `<p class="status">No clips matched.</p>`);
+  }
+  d.querySelectorAll(".cite").forEach((b) => b.addEventListener("click", () => {
+    const card = document.getElementById(`clip-${b.dataset.msg}-${b.dataset.clip}`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1500);
+    const v = card.querySelector("video"); v.play().catch(() => {});
+  }));
+  const sec = data.secs ? ` · ${data.secs}s` : "";
+  d.insertAdjacentHTML("beforeend", `<div class="status" style="margin-top:10px">searched: “${esc(data.query_used || "")}”${sec}</div>`);
+  scrollDown();
+}
+
+async function ask(text) {
+  text = text.trim(); if (!text || busy) return;
+  busy = true; sendBtn.disabled = true;
+  if (!history.length) thread.innerHTML = "";
+  add(esc(text), "user");
+  const wait = add(`<span class="status">Searching the talks<span class="dots"></span></span>`, "bot");
+  try {
+    const r = await fetch("/chat", { method: "POST", headers: { "content-type": "application/json" },
+                                      body: JSON.stringify({ message: text, history: history.slice(-12), max_clips: 4 }) });
+    const data = await r.json();
+    wait.remove();
+    if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+    render(data);
+    history.push({ role: "user", content: text }, { role: "assistant", content: data.answer });
+  } catch (e) {
+    wait.className = "msg bot err"; wait.textContent = "Something went wrong: " + e.message; wait.parentNode || thread.appendChild(wait);
+  } finally { busy = false; sendBtn.disabled = false; input.focus(); }
+}
+
+$("#form").addEventListener("submit", (e) => { e.preventDefault(); const t = input.value; input.value = ""; autosize(); ask(t); });
+input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#form").requestSubmit(); } });
+function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 140) + "px"; }
+input.addEventListener("input", autosize);
+$("#reset").addEventListener("click", () => { history = []; showEmpty(); });
+
+fetch("/stats").then((r) => r.json()).then((s) => { $("#meta").textContent = `${s.videos} talks · ${s.claims} claims indexed`; }).catch(() => {});
+showEmpty();
+const q0 = new URLSearchParams(location.search).get("q"); if (q0) ask(q0);   // shareable: /?q=your+question
+</script>
+</body>
+</html>
